@@ -1,0 +1,46 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# VS Code local settings
+.vscode/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+.cache/
+
+# Output / generated files
+outputs/
+output/
+runs/
+exports/
+artifacts/
+export/
+results/
+
+# Images or generated datasets, 視情況調整
+*.zip
+*.tar
+*.tar.gz
+
+# Secrets / API keys
+.env
+*.key
+secrets.json
+api_key.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
