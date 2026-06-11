@@ -1,4 +1,4 @@
-image: Pic_2026_02_11_111627_1701_crop001.png
-ROI: 483,567,597,642
-target_area: rect:60,735,786,1214
+image: Pic_2026_02_11_111627_1701_crop004.png
+ROI: 260,455,374,527
+target_area: rect:71,569,557,1198
 note: ROI is the original edit/remove area; target_area entries are unioned allowed random generation areas.
