@@ -1401,8 +1401,23 @@ class RoiTargetCanvas(QLabel):
         }
         return {name: QRect(pt.x() - half, pt.y() - half, hs, hs) for name, pt in points.items()}
 
+    def _polygon_handle_rects(self, shape: dict[str, Any]) -> dict[str, QRect]:
+        pts = [self._image_to_display_point(x, y) for x, y in shape.get("points", [])]
+        if len(pts) < 3:
+            return {}
+        hs = max(8, int(self.handle_size))
+        half = hs // 2
+        handles: dict[str, QRect] = {}
+        for idx, pt in enumerate(pts):
+            handles[f"poly_vertex_{idx}"] = QRect(pt.x() - half, pt.y() - half, hs, hs)
+        for idx, pt in enumerate(pts):
+            nxt = pts[(idx + 1) % len(pts)]
+            mid = QPoint((pt.x() + nxt.x()) // 2, (pt.y() + nxt.y()) // 2)
+            handles[f"poly_edge_{idx}"] = QRect(mid.x() - half, mid.y() - half, hs, hs)
+        return handles
+
     def _draw_resize_handles(self, painter: QPainter) -> None:
-        """Draw resize handles on selected rectangle-based regions."""
+        """Draw resize handles on selected regions."""
         if self.mode not in {"select_roi", "select_target"}:
             return
         painter.setBrush(QColor(255, 255, 255, 245))
@@ -1415,11 +1430,18 @@ class RoiTargetCanvas(QLabel):
         elif self.mode == "select_target":
             painter.setPen(QPen(QColor("#fbbf24"), 2))
             for idx in sorted(self.selected_target_indices):
-                if 0 <= idx < len(self.target_areas) and self.target_areas[idx].get("kind") != "polygon":
-                    for rect in self._handle_rects(self._image_to_display_rect(target_area_bbox(self.target_areas[idx]))).values():
+                if 0 <= idx < len(self.target_areas):
+                    shape = self.target_areas[idx]
+                    if shape.get("kind") == "polygon":
+                        handles = self._polygon_handle_rects(shape)
+                    else:
+                        handles = self._handle_rects(self._image_to_display_rect(target_area_bbox(shape)))
+                    for rect in handles.values():
                         painter.drawRect(rect)
 
     def _cursor_for_handle(self, handle: str) -> QCursor:
+        if handle.startswith("poly_"):
+            return QCursor(Qt.SizeAllCursor)
         if handle in {"nw", "se"}:
             return QCursor(Qt.SizeFDiagCursor)
         if handle in {"ne", "sw"}:
@@ -1455,6 +1477,40 @@ class RoiTargetCanvas(QLabel):
             return None
         return min(candidates, key=lambda item: item[0])[1]
 
+    def _distance_to_segment_sq(self, point: QPoint, start: QPoint, end: QPoint) -> float:
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        if dx == 0 and dy == 0:
+            px = point.x() - start.x()
+            py = point.y() - start.y()
+            return float(px * px + py * py)
+        t = ((point.x() - start.x()) * dx + (point.y() - start.y()) * dy) / float(dx * dx + dy * dy)
+        t = max(0.0, min(1.0, t))
+        proj_x = start.x() + t * dx
+        proj_y = start.y() + t * dy
+        px = point.x() - proj_x
+        py = point.y() - proj_y
+        return px * px + py * py
+
+    def _hit_polygon_resize_handle(self, shape: dict[str, Any], point: QPoint) -> Optional[str]:
+        for handle, hrect in self._polygon_handle_rects(shape).items():
+            if hrect.contains(point):
+                return handle
+
+        pts = [self._image_to_display_point(x, y) for x, y in shape.get("points", [])]
+        if len(pts) < 3:
+            return None
+        tol = max(6, int(self.handle_size // 2) + 2)
+        candidates: list[tuple[float, str]] = []
+        for idx, start in enumerate(pts):
+            end = pts[(idx + 1) % len(pts)]
+            dist_sq = self._distance_to_segment_sq(point, start, end)
+            if dist_sq <= float(tol * tol):
+                candidates.append((dist_sq, f"poly_edge_{idx}"))
+        if not candidates:
+            return None
+        return min(candidates, key=lambda item: item[0])[1]
+
     def _hit_resize_handle(self, point: QPoint) -> Optional[tuple[str, int, str]]:
         """Return (kind, index, handle) when pointer is on a resize handle."""
         if self.mode == "select_roi":
@@ -1466,11 +1522,17 @@ class RoiTargetCanvas(QLabel):
                         return "roi", idx, handle
         if self.mode == "select_target":
             for idx in sorted(self.selected_target_indices, reverse=True):
-                if 0 <= idx < len(self.target_areas) and self.target_areas[idx].get("kind") != "polygon":
-                    disp = self._image_to_display_rect(target_area_bbox(self.target_areas[idx]))
-                    handle = self._hit_rect_resize_handle(disp, point)
-                    if handle is not None:
-                        return "target", idx, handle
+                if 0 <= idx < len(self.target_areas):
+                    shape = self.target_areas[idx]
+                    if shape.get("kind") == "polygon":
+                        handle = self._hit_polygon_resize_handle(shape, point)
+                        if handle is not None:
+                            return "target_polygon", idx, handle
+                    else:
+                        disp = self._image_to_display_rect(target_area_bbox(shape))
+                        handle = self._hit_rect_resize_handle(disp, point)
+                        if handle is not None:
+                            return "target", idx, handle
         return None
 
     def _resize_rect_from_handle(self, original: tuple[int, int, int, int], handle: str, point: QPoint) -> tuple[int, int, int, int]:
@@ -1494,6 +1556,30 @@ class RoiTargetCanvas(QLabel):
         elif kind == "target" and 0 <= index < len(self.target_areas):
             if self.target_areas[index].get("kind") != "polygon":
                 self.target_areas[index] = {"kind": "rect", "rect": rect}
+
+    def _apply_resize_polygon(self, index: int, handle: str, original_points: list[tuple[int, int]], original_point: tuple[int, int], point: QPoint) -> None:
+        if not (0 <= index < len(self.target_areas)) or len(original_points) < 3:
+            return
+        current = self._display_to_image_point(point)
+        img_w, img_h = self.image_size
+        points = [(int(x), int(y)) for x, y in original_points]
+        if handle.startswith("poly_vertex_"):
+            vertex_idx = int(handle.rsplit("_", 1)[1])
+            if 0 <= vertex_idx < len(points):
+                points[vertex_idx] = (max(0, min(img_w, current[0])), max(0, min(img_h, current[1])))
+        elif handle.startswith("poly_edge_"):
+            edge_idx = int(handle.rsplit("_", 1)[1])
+            next_idx = (edge_idx + 1) % len(points)
+            if 0 <= edge_idx < len(points):
+                endpoints = [points[edge_idx], points[next_idx]]
+                dx = current[0] - original_point[0]
+                dy = current[1] - original_point[1]
+                dx = max(max(-x for x, _ in endpoints), min(dx, min(img_w - x for x, _ in endpoints)))
+                dy = max(max(-y for _, y in endpoints), min(dy, min(img_h - y for _, y in endpoints)))
+                points[edge_idx] = (points[edge_idx][0] + dx, points[edge_idx][1] + dy)
+                points[next_idx] = (points[next_idx][0] + dx, points[next_idx][1] + dy)
+        if len(set(points)) >= 3:
+            self.target_areas[index] = {"kind": "polygon", "points": points}
 
     def _cursor_mode_label(self) -> str:
         if self.mode == "roi":
@@ -1535,8 +1621,13 @@ class RoiTargetCanvas(QLabel):
             resize_hit = self._hit_resize_handle(p)
             if resize_hit is not None:
                 kind, idx, handle = resize_hit
-                original = self.rois[idx] if kind == "roi" else target_area_bbox(self.target_areas[idx])
-                self.resize_active = {"kind": kind, "index": idx, "handle": handle, "original": original}
+                if kind == "target_polygon":
+                    original = [(int(x), int(y)) for x, y in self.target_areas[idx].get("points", [])]
+                    original_point = self._display_to_image_point(p)
+                    self.resize_active = {"kind": kind, "index": idx, "handle": handle, "original": original, "original_point": original_point}
+                else:
+                    original = self.rois[idx] if kind == "roi" else target_area_bbox(self.target_areas[idx])
+                    self.resize_active = {"kind": kind, "index": idx, "handle": handle, "original": original}
                 self.setCursor(self._cursor_for_handle(handle))
                 event.accept(); return
         if event.button() == Qt.LeftButton and self.mode == "select_roi":
@@ -1580,8 +1671,11 @@ class RoiTargetCanvas(QLabel):
             self.pan_offset = self.pan_origin + (p - self.pan_start); self.update(); event.accept(); return
         if self.resize_active is not None:
             info = self.resize_active
-            rect = self._resize_rect_from_handle(info["original"], info["handle"], p)
-            self._apply_resize_rect(info["kind"], info["index"], rect)
+            if info["kind"] == "target_polygon":
+                self._apply_resize_polygon(info["index"], info["handle"], info["original"], info["original_point"], p)
+            else:
+                rect = self._resize_rect_from_handle(info["original"], info["handle"], p)
+                self._apply_resize_rect(info["kind"], info["index"], rect)
             self.setCursor(self._cursor_for_handle(info["handle"]))
             self.update(); event.accept(); return
         if self.mode == "target_poly" and self.poly_points:
