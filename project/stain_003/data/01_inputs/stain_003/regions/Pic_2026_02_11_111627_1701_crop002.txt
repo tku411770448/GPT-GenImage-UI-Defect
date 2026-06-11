@@ -1,0 +1,2 @@
+image: Pic_2026_02_11_111627_1701_crop002.png
+note: ROI is the original edit/remove area; target_area entries are unioned allowed random generation areas.
