@@ -1,0 +1,25 @@
+{
+  "active_project_id": "stain_002",
+  "projects": [
+    {
+      "id": "stain_002",
+      "name": "stain_002",
+      "class_name": "stain_002",
+      "model": "gpt-image-2",
+      "quality": "low",
+      "num_outputs": 2,
+      "created_at": "2026-06-11T09:16:21",
+      "updated_at": "2026-06-11T09:26:45"
+    },
+    {
+      "id": "stain_001",
+      "name": "stain_001",
+      "class_name": "stain_001",
+      "model": "gpt-image-2",
+      "quality": "low",
+      "num_outputs": 8,
+      "created_at": "2026-06-11T09:04:48",
+      "updated_at": "2026-06-11T09:16:12"
+    }
+  ]
+}
