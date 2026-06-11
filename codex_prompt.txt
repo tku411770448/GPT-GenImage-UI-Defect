@@ -1,0 +1,15 @@
+請依照 AGENTS.md 的規則修改目前專案。
+
+任務：
+[在這裡描述你要修正或新增的功能]
+
+完成條件：
+1. 實際修改檔案。
+2. 執行必要的檢查或測試。
+3. 不要上傳 GitHub，不要使用 push/pull/remote。
+4. 完成後建立本地 Git commit。
+5. 回報：
+   - 修改了哪些檔案
+   - 執行了哪些檢查
+   - commit message
+   - commit hash
