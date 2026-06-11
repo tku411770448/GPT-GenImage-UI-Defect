@@ -1430,22 +1430,47 @@ class RoiTargetCanvas(QLabel):
             return QCursor(Qt.SizeVerCursor)
         return QCursor(Qt.ArrowCursor)
 
+    def _hit_rect_resize_handle(self, disp: QRect, point: QPoint) -> Optional[str]:
+        for handle, hrect in self._handle_rects(disp).items():
+            if hrect.contains(point):
+                return handle
+
+        tol = max(6, int(self.handle_size // 2) + 2)
+        left = disp.left()
+        right = disp.right()
+        top = disp.top()
+        bottom = disp.bottom()
+        within_x = left - tol <= point.x() <= right + tol
+        within_y = top - tol <= point.y() <= bottom + tol
+        candidates: list[tuple[int, str]] = []
+        if within_x and abs(point.y() - top) <= tol:
+            candidates.append((abs(point.y() - top), "n"))
+        if within_x and abs(point.y() - bottom) <= tol:
+            candidates.append((abs(point.y() - bottom), "s"))
+        if within_y and abs(point.x() - left) <= tol:
+            candidates.append((abs(point.x() - left), "w"))
+        if within_y and abs(point.x() - right) <= tol:
+            candidates.append((abs(point.x() - right), "e"))
+        if not candidates:
+            return None
+        return min(candidates, key=lambda item: item[0])[1]
+
     def _hit_resize_handle(self, point: QPoint) -> Optional[tuple[str, int, str]]:
         """Return (kind, index, handle) when pointer is on a resize handle."""
         if self.mode == "select_roi":
             for idx in sorted(self.selected_roi_indices, reverse=True):
                 if 0 <= idx < len(self.rois):
                     disp = self._image_to_display_rect(self.rois[idx])
-                    for handle, hrect in self._handle_rects(disp).items():
-                        if hrect.contains(point):
-                            return "roi", idx, handle
+                    handle = self._hit_rect_resize_handle(disp, point)
+                    if handle is not None:
+                        return "roi", idx, handle
         if self.mode == "select_target":
             for idx in sorted(self.selected_target_indices, reverse=True):
                 if 0 <= idx < len(self.target_areas) and self.target_areas[idx].get("kind") != "polygon":
                     disp = self._image_to_display_rect(target_area_bbox(self.target_areas[idx]))
-                    for handle, hrect in self._handle_rects(disp).items():
-                        if hrect.contains(point):
-                            return "target", idx, handle
+                    handle = self._hit_rect_resize_handle(disp, point)
+                    if handle is not None:
+                        return "target", idx, handle
         return None
 
     def _resize_rect_from_handle(self, original: tuple[int, int, int, int], handle: str, point: QPoint) -> tuple[int, int, int, int]:
