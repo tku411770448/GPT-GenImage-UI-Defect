@@ -1407,6 +1407,8 @@ def main():
         "random_scale_min": args.random_scale_min,
         "random_scale_max": args.random_scale_max,
         "preprocess": prep_meta,
+        "bbox_source_width": image.width,
+        "bbox_source_height": image.height,
         "outputs": [],
         "final_outputs": [],
         "placement_records": [],

@@ -2281,6 +2281,8 @@ class MainWindow(QMainWindow):
             for i, v in enumerate(target.completed_steps[:STEP_COUNT]):
                 fixed[i] = bool(v)
             target.completed_steps = fixed
+        target.completed_steps[0] = True
+        target.completed_steps[1] = True
         if target.completed_steps[3] or self.project_has_required_regions(target):
             target.crop_mode_selected = True
         has_runs = self.project_has_generation_outputs(target)
@@ -2530,6 +2532,19 @@ class MainWindow(QMainWindow):
         row.addWidget(new_btn); row.addStretch(1)
         lay.addLayout(row)
 
+        api_box = QGroupBox("Shared OpenAI API")
+        api_lay = QGridLayout(api_box)
+        api_lay.setColumnStretch(1, 1)
+        self.home_api_edit = QLineEdit()
+        self.home_api_edit.setEchoMode(QLineEdit.Password)
+        save_api = QPushButton("Save / Replace API Key")
+        save_api.clicked.connect(self.safe_action("save_home_api_key", lambda: self.save_api_key_from_editor(self.home_api_edit)))
+        api_lay.addWidget(QLabel("OpenAI API Key"), 0, 0)
+        api_lay.addWidget(self.home_api_edit, 0, 1)
+        api_lay.addWidget(save_api, 0, 2)
+        lay.addWidget(api_box)
+        self.refresh_api_placeholder()
+
         self.home_current_project_label = QLabel("")
         self.home_current_project_label.setObjectName("ActiveProjectLabel")
         self.home_current_project_label.setWordWrap(True)
@@ -2560,14 +2575,15 @@ class MainWindow(QMainWindow):
 
     def page_project(self) -> QWidget:
         lay = QVBoxLayout()
-        lay.addWidget(self.header("Step 1｜專案與 OpenAI API 設定", "設定 Class Name 與 OpenAI API Key。完成後按 Submit 才能進入資料上傳。"))
-        box = QGroupBox("基本設定"); g = QGridLayout(box); g.setColumnStretch(1,1)
-        self.class_edit = QLineEdit(self.state.class_name); self.class_edit.setPlaceholderText("例如：stain / product_class")
-        self.api_edit = QLineEdit(); self.api_edit.setEchoMode(QLineEdit.Password); self.refresh_api_placeholder()
-        save_api = QPushButton("儲存 / 替換 API Key"); save_api.clicked.connect(self.safe_action("save_api_key", self.save_api_key))
+        lay.addWidget(self.header("Step 1 | Class Settings", "OpenAI API Key is configured once in Step 0 and shared by all projects."))
+        box = QGroupBox("Project class settings")
+        g = QGridLayout(box)
+        g.setColumnStretch(1, 1)
+        self.class_edit = QLineEdit(self.state.class_name)
+        self.class_edit.setPlaceholderText("stain / product_class")
         self.class_edit.textChanged.connect(self.safe_slot("class_name_changed", lambda *_: self.mark_dirty(1)))
-        g.addWidget(QLabel("Class Name"), 0, 0); g.addWidget(self.class_edit, 0, 1, 1, 2)
-        g.addWidget(QLabel("OpenAI API Key"), 1, 0); g.addWidget(self.api_edit, 1, 1); g.addWidget(save_api, 1, 2)
+        g.addWidget(QLabel("Class Name"), 0, 0)
+        g.addWidget(self.class_edit, 0, 1, 1, 2)
         lay.addWidget(box)
         return self.wrap_page(1, lay)
 
@@ -3048,7 +3064,7 @@ class MainWindow(QMainWindow):
                 status = "current_done" if self.state.completed_steps[i] and not self.dirty_steps[i] else "current_dirty"
             else:
                 status = "done" if self.state.completed_steps[i] and not self.dirty_steps[i] else "dirty"
-            if i == 0 and self.state.project_id:
+            if i == 0 and self.state.project_id and not locked:
                 status = "done" if i != self.current_step else "current_done"
             btn.setProperty("status", status); btn.setChecked(i == self.current_step); btn.style().unpolish(btn); btn.style().polish(btn)
         # During generation, prevent accidental page changes or Submit/Back actions
@@ -3103,7 +3119,9 @@ class MainWindow(QMainWindow):
 
     def complete_step(self, idx: int) -> None:
         self.state.completed_steps[idx] = True; self.dirty_steps[idx] = False; self.save_state(); self.update_step_buttons()
-        if idx < STEP_COUNT - 1: self.goto_step(idx + 1)
+        if idx < STEP_COUNT - 1:
+            next_idx = 2 if idx == 0 and self.state.completed_steps[1] else idx + 1
+            self.goto_step(next_idx)
 
     def _log_ui_exception(self, context: str, exc: BaseException) -> None:
         try:
@@ -3300,8 +3318,10 @@ class MainWindow(QMainWindow):
         self.state = UIState(project_id=pid, project_name=name.strip(), created_at=datetime.now().isoformat(timespec="seconds"), class_name=class_default, saved_project=True)
         self.dirty_steps = [False] + [True] * (STEP_COUNT - 1)
         self.state.completed_steps[0] = True
+        self.state.completed_steps[1] = True
+        self.dirty_steps[1] = False
         self.selected_project_card_id = self.state.project_id
-        self.save_state(); self.load_state_to_widgets(); self.clear_all_visual_previews(); self.refresh_project_list(); self.status_label.setText("Status: project created"); self.goto_step(1)
+        self.save_state(); self.load_state_to_widgets(); self.clear_all_visual_previews(); self.refresh_project_list(); self.status_label.setText("Status: project created"); self.goto_step(2)
 
     def selected_project_id(self) -> str:
         return getattr(self, "selected_project_card_id", "")
@@ -3605,6 +3625,49 @@ class MainWindow(QMainWindow):
         lines.append(f"OPENAI_API_KEY={key}"); env.write_text("\n".join(lines)+"\n", encoding="utf-8")
         os.environ["OPENAI_API_KEY"] = key; self.state.api_key_set=True; self.save_state(); self.api_edit.clear(); self.refresh_api_placeholder(); QMessageBox.information(self, "API Key 已設定", f"API Key 已成功保存：{self.masked_key(key)}")
 
+    def refresh_api_placeholder(self) -> None:
+        key = self.read_env_key()
+        for attr in ("home_api_edit", "api_edit"):
+            editor = getattr(self, attr, None)
+            if editor is not None:
+                editor.setPlaceholderText(self.masked_key(key))
+        self.state.api_key_set = bool(key)
+
+    def save_api_key_from_editor(self, editor: QLineEdit) -> bool:
+        key = editor.text().strip()
+        if not key:
+            existing = self.read_env_key()
+            if existing:
+                self.refresh_api_placeholder()
+                QMessageBox.information(self, "API Key", f"Current shared API Key: {self.masked_key(existing)}")
+            else:
+                QMessageBox.warning(self, "Missing", "Please enter an OpenAI API Key.")
+            return False
+        old = self.read_env_key()
+        if old and key != old:
+            ret = QMessageBox.question(self, "Replace API Key", "Replace the shared OpenAI API Key for all projects?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if ret != QMessageBox.StandardButton.Yes:
+                editor.clear()
+                return False
+        env = self.root / ".env"
+        lines = []
+        if env.exists():
+            lines = [ln for ln in env.read_text(encoding="utf-8").splitlines() if not ln.startswith("OPENAI_API_KEY=")]
+        lines.append(f"OPENAI_API_KEY={key}")
+        env.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        os.environ["OPENAI_API_KEY"] = key
+        self.state.api_key_set = True
+        self.save_state()
+        editor.clear()
+        self.refresh_api_placeholder()
+        QMessageBox.information(self, "API Key", f"Shared API Key saved: {self.masked_key(key)}")
+        return True
+
+    def save_api_key(self) -> None:
+        editor = getattr(self, "home_api_edit", None) or getattr(self, "api_edit", None)
+        if editor is not None:
+            self.save_api_key_from_editor(editor)
+
     # ---------- submit ----------
     def submit_home(self) -> bool:
         if not self.state.project_id:
@@ -3622,6 +3685,29 @@ class MainWindow(QMainWindow):
             return False
         if self.api_edit.text().strip(): self.save_api_key()
         self.init_workspace_silent(); self.save_state(); self.status_label.setText("Status: workspace ready")
+        return True
+
+    def submit_home(self) -> bool:
+        editor = getattr(self, "home_api_edit", None)
+        if editor is not None and editor.text().strip():
+            if not self.save_api_key_from_editor(editor):
+                return False
+        if not self.state.project_id:
+            QMessageBox.warning(self, "Missing", "Please create or open a project first.")
+            return False
+        self.state.completed_steps[1] = True
+        self.dirty_steps[1] = False
+        self.save_state()
+        return True
+
+    def submit_project(self) -> bool:
+        self.update_state_from_widgets()
+        if not self.state.class_name:
+            QMessageBox.warning(self, "Missing", "Class Name is required.")
+            return False
+        self.init_workspace_silent()
+        self.save_state()
+        self.status_label.setText("Status: project class ready")
         return True
 
     def submit_upload(self) -> bool:
@@ -5005,7 +5091,7 @@ class MainWindow(QMainWindow):
             title = "API Key / 驗證錯誤"
             message = (
                 "生成失敗原因：OpenAI API Key 未設定、無效，或目前環境沒有正確讀取。\n\n"
-                "處理方式：請回到 Step 1 重新儲存 API Key，再回到 Step 8 執行生成。\n\n"
+                "處理方式：請回到 Step 0 重新儲存共用 API Key，再回到 Step 8 執行生成。\n\n"
                 "錯誤摘要：\n" + text[-1600:]
             )
             return title, message, "生成失敗：API Key / 驗證錯誤。"
@@ -5129,7 +5215,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self,"Missing","請先在 Step 5『引用組別』選定 1～16 組圖像與 ROI/Target Area 組合。") ; return
         if len(selected_paths) > 16:
             QMessageBox.warning(self,"超過上限","Step 5 最終輸入組合一次最多只能選定 16 組。") ; return
-        if not self.read_env_key(): QMessageBox.warning(self,"Missing","OPENAI_API_KEY 尚未設定，請先到 Step 1 儲存 API Key。") ; return
+        if not self.read_env_key(): QMessageBox.warning(self,"Missing","OPENAI_API_KEY 尚未設定，請先到 Step 0 儲存共用 API Key。") ; return
         if not self.check_generation_runtime(): return
         self.state.generation_status = "running"
         self.state.last_generation_return_code = 0

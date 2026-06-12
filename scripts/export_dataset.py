@@ -62,6 +62,28 @@ def normalize_xyxy(bbox: list[float] | tuple[float, ...] | None, width: int, hei
     return x1, y1, x2, y2
 
 
+def scale_xyxy(
+    bbox: list[float] | tuple[float, ...] | None,
+    source_width: int | float | None,
+    source_height: int | float | None,
+    target_width: int,
+    target_height: int,
+) -> list[float] | tuple[float, ...] | None:
+    if not bbox or len(bbox) != 4:
+        return bbox
+    try:
+        sw = float(source_width or 0)
+        sh = float(source_height or 0)
+    except Exception:
+        return bbox
+    if sw <= 0 or sh <= 0 or (int(round(sw)) == int(target_width) and int(round(sh)) == int(target_height)):
+        return bbox
+    sx = float(target_width) / sw
+    sy = float(target_height) / sh
+    x1, y1, x2, y2 = [float(v) for v in bbox]
+    return [x1 * sx, y1 * sy, x2 * sx, y2 * sy]
+
+
 def main() -> None:
     root = project_root()
     p = argparse.ArgumentParser(description="Export GPT Image class runs to COCO/YOLO datasets.")
@@ -168,6 +190,9 @@ def main() -> None:
                     if isinstance(rec, dict) and rec.get("bbox_xyxy"):
                         bbox_xyxy = rec.get("bbox_xyxy")
                         break
+            bbox_source_w = meta.get("bbox_source_width") or meta.get("preprocess", {}).get("final_width")
+            bbox_source_h = meta.get("bbox_source_height") or meta.get("preprocess", {}).get("final_height")
+            bbox_xyxy = scale_xyxy(bbox_xyxy, bbox_source_w, bbox_source_h, width, height)
             xyxy = normalize_xyxy(bbox_xyxy, width, height)
             yolo_lines: list[str] = []
             if xyxy is not None:
