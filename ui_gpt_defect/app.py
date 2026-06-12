@@ -30,7 +30,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
     QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSizePolicy,
     QSpinBox, QDoubleSpinBox, QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QInputDialog,
-    QListView, QMenu, QToolButton, QAbstractItemView, QStyle, QStyleOptionSpinBox
+    QListView, QMenu, QToolButton, QAbstractItemView, QStyle, QStyleOptionSpinBox,
+    QDialog, QDialogButtonBox, QFormLayout
 )
 
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
@@ -257,6 +258,9 @@ DEFAULT_GPT_IMAGE2_PRICING_PER_1M = {
     "image_output_tokens": 30.00,
 }
 STEP_COUNT = 10
+VISIBLE_STEPS = [0, 2, 3, 4, 5, 6, 7, 8, 9]
+STEP_TO_STACK_INDEX = {step: idx for idx, step in enumerate(VISIBLE_STEPS)}
+STEP_DISPLAY_INDEX = {step: idx for idx, step in enumerate(VISIBLE_STEPS)}
 
 
 def project_root() -> Path:
@@ -2394,9 +2398,11 @@ class MainWindow(QMainWindow):
         self.sidebar_hint = hint
         step_container = QWidget(); step_container.setObjectName("StepContainer"); step_container.setAutoFillBackground(False); step_container.setAttribute(Qt.WA_StyledBackground, True); step_lay = QVBoxLayout(step_container); step_lay.setContentsMargins(0,0,0,0); step_lay.setSpacing(9)
         self.step_layout = step_lay
-        for i in range(STEP_COUNT):
-            btn = StepButton(i, self.TR[f"step{i}"])
-            btn.clicked.connect(self.safe_action(f"goto_step_{i}", lambda idx=i: self.goto_step(idx)))
+        for display_idx, internal_idx in enumerate(VISIBLE_STEPS):
+            btn = StepButton(display_idx, self.TR[f"step{internal_idx}"])
+            btn.index = internal_idx
+            btn.display_index = display_idx
+            btn.clicked.connect(self.safe_action(f"goto_step_{internal_idx}", lambda idx=internal_idx: self.goto_step(idx)))
             self.step_buttons.append(btn); step_lay.addWidget(btn)
         step_lay.addStretch(1)
         step_scroll = QScrollArea(); step_scroll.setObjectName("StepScroll"); step_scroll.setWidgetResizable(True); step_scroll.setFrameShape(QFrame.NoFrame); step_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff); step_scroll.viewport().setObjectName("StepScrollViewport"); step_scroll.viewport().setAutoFillBackground(False); step_scroll.viewport().setAttribute(Qt.WA_StyledBackground, True); step_scroll.setWidget(step_container)
@@ -2407,7 +2413,6 @@ class MainWindow(QMainWindow):
         main.addWidget(sidebar, 0)
         self.stack = QStackedWidget(); main.addWidget(self.stack, 1)
         self.stack.addWidget(self.page_home())
-        self.stack.addWidget(self.page_project())
         self.stack.addWidget(self.page_upload())
         self.stack.addWidget(self.page_crop())
         self.stack.addWidget(self.page_regions())
@@ -2517,6 +2522,11 @@ class MainWindow(QMainWindow):
     def header(self, title: str, subtitle: str) -> QWidget:
         box = QFrame(); box.setObjectName("Header")
         lay = QVBoxLayout(box)
+        m = re.match(r"^(Step\s+)(\d+)(.*)$", title)
+        if m:
+            internal_step = int(m.group(2))
+            if internal_step in STEP_DISPLAY_INDEX:
+                title = f"{m.group(1)}{STEP_DISPLAY_INDEX[internal_step]}{m.group(3)}"
         t = QLabel(title); t.setObjectName("PageTitle")
         if subtitle:
             box.setToolTip(subtitle)
@@ -2572,20 +2582,6 @@ class MainWindow(QMainWindow):
         self.project_summary.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         lay.addWidget(self.project_summary, 1)
         return self.wrap_page(0, lay)
-
-    def page_project(self) -> QWidget:
-        lay = QVBoxLayout()
-        lay.addWidget(self.header("Step 1 | Class Settings", "OpenAI API Key is configured once in Step 0 and shared by all projects."))
-        box = QGroupBox("Project class settings")
-        g = QGridLayout(box)
-        g.setColumnStretch(1, 1)
-        self.class_edit = QLineEdit(self.state.class_name)
-        self.class_edit.setPlaceholderText("stain / product_class")
-        self.class_edit.textChanged.connect(self.safe_slot("class_name_changed", lambda *_: self.mark_dirty(1)))
-        g.addWidget(QLabel("Class Name"), 0, 0)
-        g.addWidget(self.class_edit, 0, 1, 1, 2)
-        lay.addWidget(box)
-        return self.wrap_page(1, lay)
 
     def page_upload(self) -> QWidget:
         lay = QVBoxLayout()
@@ -3054,8 +3050,10 @@ class MainWindow(QMainWindow):
     def update_step_buttons(self) -> None:
         max_access = self.max_accessible_step()
         generation_locked = self.is_generation_running()
-        for i, btn in enumerate(self.step_buttons):
-            btn.setText((f"Step {i}\n{self.TR[f'step{i}']}"))
+        for btn in self.step_buttons:
+            i = int(getattr(btn, "index", 0))
+            display_i = int(getattr(btn, "display_index", STEP_DISPLAY_INDEX.get(i, i)))
+            btn.setText((f"Step {display_i}\n{self.TR[f'step{i}']}"))
             locked = (i > max_access) or (generation_locked and i != 8)
             btn.set_locked(locked)
             if locked:
@@ -3082,6 +3080,10 @@ class MainWindow(QMainWindow):
                 fbtn.style().unpolish(fbtn); fbtn.style().polish(fbtn)
 
     def goto_step(self, idx: int) -> None:
+        if idx == 1:
+            idx = 2 if self.state.project_id else 0
+        if idx not in STEP_TO_STACK_INDEX:
+            return
         if self.is_generation_running() and idx != 8:
             QMessageBox.warning(self, "Generating", "生成圖片期間已鎖定其他 Step，請等待完成或停止目前程序。")
             return
@@ -3094,7 +3096,7 @@ class MainWindow(QMainWindow):
         self.current_step = idx
         self.state.last_active_step = int(idx)
         self.save_state()
-        self.stack.setCurrentIndex(idx)
+        self.stack.setCurrentIndex(STEP_TO_STACK_INDEX[idx])
         self.update_step_buttons()
         self.refresh_all(light=True)
         if idx == 3:
@@ -3104,8 +3106,10 @@ class MainWindow(QMainWindow):
         if self.is_generation_running():
             QMessageBox.warning(self, "Generating", "生成圖片期間 Back 已鎖定，請等待完成或停止目前程序。")
             return
-        if self.current_step > 0:
-            self.goto_step(self.current_step - 1)
+        if self.current_step in VISIBLE_STEPS:
+            pos = VISIBLE_STEPS.index(self.current_step)
+            if pos > 0:
+                self.goto_step(VISIBLE_STEPS[pos - 1])
 
     def mark_dirty(self, idx: int) -> None:
         if getattr(self, "_suspend_dirty_tracking", False):
@@ -3119,9 +3123,12 @@ class MainWindow(QMainWindow):
 
     def complete_step(self, idx: int) -> None:
         self.state.completed_steps[idx] = True; self.dirty_steps[idx] = False; self.save_state(); self.update_step_buttons()
-        if idx < STEP_COUNT - 1:
-            next_idx = 2 if idx == 0 and self.state.completed_steps[1] else idx + 1
-            self.goto_step(next_idx)
+        if idx in VISIBLE_STEPS:
+            pos = VISIBLE_STEPS.index(idx)
+            if pos < len(VISIBLE_STEPS) - 1:
+                self.goto_step(VISIBLE_STEPS[pos + 1])
+        elif idx < STEP_COUNT - 1:
+            self.goto_step(idx + 1)
 
     def _log_ui_exception(self, context: str, exc: BaseException) -> None:
         try:
@@ -3303,9 +3310,39 @@ class MainWindow(QMainWindow):
             f"狀態：可開啟後繼續編輯或重新執行。"
         )
 
+    def prompt_new_project_settings(self) -> tuple[str, str] | None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Create Project")
+        form = QFormLayout(dialog)
+        project_edit = QLineEdit()
+        class_edit = QLineEdit()
+        project_edit.setPlaceholderText("project name")
+        class_edit.setPlaceholderText("class name")
+        class_touched = {"value": False}
+
+        def sync_class_name(text: str) -> None:
+            if not class_touched["value"]:
+                class_edit.setText(sanitize_name(text))
+
+        class_edit.textEdited.connect(lambda *_: class_touched.__setitem__("value", True))
+        project_edit.textChanged.connect(sync_class_name)
+        form.addRow("Project Name", project_edit)
+        form.addRow("Class Name", class_edit)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addWidget(buttons)
+        project_edit.setFocus()
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return project_edit.text().strip(), class_edit.text().strip()
+
     def create_project(self) -> None:
-        name, ok = QInputDialog.getText(self, "新增專案", "請輸入專案名稱：")
-        if not ok or not name.strip():
+        settings = self.prompt_new_project_settings()
+        if settings is None:
+            return
+        name, class_name = settings
+        if not name.strip():
             return
         normalized = name.strip().lower()
         if normalized in self.all_project_names():
@@ -3314,7 +3351,7 @@ class MainWindow(QMainWindow):
             return
         self.show_project_error("")
         pid = make_project_id(name)
-        class_default = sanitize_name(name)
+        class_default = sanitize_name(class_name or name)
         self.state = UIState(project_id=pid, project_name=name.strip(), created_at=datetime.now().isoformat(timespec="seconds"), class_name=class_default, saved_project=True)
         self.dirty_steps = [False] + [True] * (STEP_COUNT - 1)
         self.state.completed_steps[0] = True
