@@ -43,3 +43,5 @@ Final response:
 - Report changed files.
 - Report validation command and result.
 - Report local commit hash.
+
+將目前專案的內容對 README.md 做同步的修正
