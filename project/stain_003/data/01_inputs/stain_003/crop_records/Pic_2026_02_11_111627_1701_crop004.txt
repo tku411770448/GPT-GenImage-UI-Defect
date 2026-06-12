@@ -1,6 +1,0 @@
-source: Pic_2026_02_11_111627_1701.jpeg
-source_path: C:\Users\USER\Desktop\GPTUI\GPTUI70\project\stain_003\data\00_raw_images\stain_003\Pic_2026_02_11_111627_1701.jpeg
-output: Pic_2026_02_11_111627_1701_crop004.png
-crop_xyxy: 2921,1512,4201,2792
-crop_center_xy: 3561,2152
-crop_size: 1280,1280

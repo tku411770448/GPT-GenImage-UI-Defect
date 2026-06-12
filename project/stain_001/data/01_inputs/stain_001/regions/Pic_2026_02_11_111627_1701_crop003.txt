@@ -1,4 +1,0 @@
-image: Pic_2026_02_11_111627_1701_crop003.png
-ROI: 892,816,1008,887
-target_area: polygon:109,1063;1088,838;1215,1179;108,1235
-note: ROI is the original edit/remove area; target_area entries are unioned allowed random generation areas.
