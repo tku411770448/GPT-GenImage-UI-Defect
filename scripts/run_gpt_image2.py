@@ -173,11 +173,20 @@ def build_prompt_bundle(cfg: dict[str, str]) -> dict[str, str]:
         user_prompt
         + f"\n\n此階段請根據 `{defect_type}` 的外觀特徵，在指定 mask / target area 位置生成新的相似瑕疵，並保持其他區域不變。"
     )
+    single_pass_relocation = (
+        user_prompt
+        + "\n\nMask-constrained edit instructions:"
+        + "\n- The transparent edit mask contains exactly two editable regions: the original ROI repair area and the randomly placed target-area defect island(s)."
+        + "\n- Remove or naturally repair the original ROI defect."
+        + "\n- Generate the new defect only inside the target-area defect island(s) provided by the edit mask."
+        + "\n- Do not add defects, stains, bright spots, texture changes, boxes, labels, outlines, or marker text outside the transparent edit mask."
+        + "\n- Preserve every opaque/unmasked pixel as close as possible to the input image."
+    )
     return {
         "prompt_only_edit_prompt": prompt_only,
         "repair_prompt": repair_prompt,
         "random_generation_prompt": generation_prompt,
-        "single_pass_relocation_prompt": prompt_only,
+        "single_pass_relocation_prompt": single_pass_relocation,
         "full_workflow_prompt": prompt_only,
         "user_prompt": user_prompt,
     }

@@ -4648,8 +4648,8 @@ class MainWindow(QMainWindow):
             f"這張圖的 Class Name 為 `{c}`\n"
             "請根據 ROI 與 target area 位置資訊進行圖像編輯。\n"
             "請把 ROI 所框選位置中的瑕疵或指定物件去除，接著將 ROI 所代表的視覺特徵，\n"
-            "在 target area 範圍內隨機生成 1~3 個相似目標，並重新生成。\n"
-            "不要將目標生成到黑色區域或 target area 之外。\n"
+            "在 target area 範圍內隨機生成 1~4 個相似目標，並重新生成。\n"
+            "不要將目標生成到 target area 之外。\n"
             "請不要保留 ROI 框線、target area 框線、標註框、文字、箭頭或任何提示標記，\n"
             "請保持原始背景、材質、光照、相機角度、紋理與整體風格自然一致。"
         )
@@ -5199,9 +5199,10 @@ class MainWindow(QMainWindow):
             "--masks-dir",str(self.masks_dir()),
             "--target-area-dir",str(self.target_masks_dir()),
             "--output-dir",str(self.project_dir()/"runs"),
-            "--workflow","prompt-only-edit",
+            "--workflow","repair-and-random-generate",
             "--model",self.state.model,"--size",self.state.size,"--quality",self.state.quality,
             "--num-outputs","1","--total-outputs",str(self.state.num_outputs),
+            "--min-defects","1","--max-defects","4",
             "--prompt-file",str(self.prompt_path())
         ]
         selected_file = self.write_selected_region_stems_file()
