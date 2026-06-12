@@ -1,3 +1,60 @@
+## Steps of Git (本地)
+
+git --version
+
+git config --global user.name "你的名字"
+git config --global user.email "你的信箱"
+git config --global init.defaultBranch main
+
+git config --global --list
+
+### 製作 .gitignore file
+.gitignore
+
+### 初始化
+git init
+
+### 版本控制
+git status
+git add .
+git status
+git commit -m "訊息串"
+
+=======================================================================================
+
+## Steps of Git 以及設定 (Github)
+
+git --version
+
+git config --global user.name "你的名字"
+git config --global user.email "你的信箱"
+git config --global init.defaultBranch main
+
+git config --global --list
+
+### 製作 .gitignore file
+.gitignore
+
+### 設定所要上傳至的 Repository
+git remote -v
+git remote add origin https://github.com/tku411770448/GPT-GenImage-UI-Defect.git
+git remote -v
+
+
+### 初始化
+git init
+
+### 版本控制
+git status
+git add .
+git status
+git commit -m "訊息串"
+git push
+
+
+
+======================================================================================
+
 ## 本地 .git
 
 請依照 AGENTS.md 的規則修改目前專案。
@@ -16,6 +73,7 @@
    - commit message
    - commit hash
 
+=======================================================================================
 
 ## git push 至 GitHub
 
