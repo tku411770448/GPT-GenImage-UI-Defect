@@ -1,3 +1,5 @@
+## 本地 .git
+
 請依照 AGENTS.md 的規則修改目前專案。
 
 任務：
@@ -13,3 +15,45 @@
    - 執行了哪些檢查
    - commit message
    - commit hash
+
+
+## git push 至 GitHub
+
+請依照 AGENTS.md 的規則修改目前專案。
+
+任務：
+[在這裡描述你要修正或新增的功能]
+
+完成條件：
+1. 實際修改目前專案中的檔案。
+2. 執行必要的檢查或測試。
+3. 修改完成後先執行：
+   git status
+   git diff --stat
+4. 檢查是否有不該提交或上傳的檔案。
+5. 若檢查無誤，請建立本地 Git commit：
+   git add -A
+   git commit -m "[清楚描述本次修改內容]"
+6. 讀取目前分支：
+   git branch --show-current
+7. 讀取遠端設定：
+   git remote -v
+8. 將目前分支 push 到 GitHub：
+   git push origin HEAD
+
+限制：
+- 不要使用 git push --force。
+- 不要自行新增 remote。
+- 不要自行切換分支。
+- 不要自行刪除遠端分支。
+- 如果沒有 origin，請停止並回報。
+- 如果 push 發生 non-fast-forward 或 authentication error，請停止並回報錯誤訊息。
+
+回報：
+- 修改了哪些檔案
+- 執行了哪些檢查
+- commit message
+- commit hash
+- 目前分支名稱
+- push 是否成功
+- push 到哪個 remote / branch
